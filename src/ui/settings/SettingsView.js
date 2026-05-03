@@ -513,7 +513,7 @@ export class SettingsView extends LitElement {
         //////// after_modelStateService ////////
         this.shortcuts = {};
         this.firebaseUser = null;
-        this.apiKeys = { openai: '', gemini: '', anthropic: '', whisper: '' };
+        this.apiKeys = { openai: '', gemini: '', anthropic: '', groq: '', whisper: '' };
         this.providerConfig = {};
         this.isLoading = true;
         this.isContentProtectionOn = true;
@@ -636,9 +636,26 @@ export class SettingsView extends LitElement {
             this.presets = presets || [];
             this.isContentProtectionOn = contentProtection;
             this.shortcuts = shortcuts || {};
+
+            // Restore previously active preset from backend
             if (this.presets.length > 0) {
-                const firstUserPreset = this.presets.find(p => p.is_default === 0);
-                if (firstUserPreset) this.selectedPreset = firstUserPreset;
+                try {
+                    const activePreset = await window.api.settingsView.getActivePreset();
+                    if (activePreset) {
+                        this.selectedPreset = this.presets.find(p => p.id === activePreset.id) || null;
+                    }
+                } catch (e) {
+                    console.warn('[SettingsView] Could not load active preset:', e);
+                }
+                // Fallback: if no active preset persisted, pick the first user preset
+                if (!this.selectedPreset) {
+                    const firstUserPreset = this.presets.find(p => p.is_default === 0);
+                    if (firstUserPreset) {
+                        this.selectedPreset = firstUserPreset;
+                        // Persist this initial selection
+                        window.api.settingsView.setActivePreset(firstUserPreset.id).catch(() => {});
+                    }
+                }
             }
             
             // Load LocalAI status asynchronously to improve initial load time
@@ -1090,8 +1107,15 @@ export class SettingsView extends LitElement {
 
     async handlePresetSelect(preset) {
         this.selectedPreset = preset;
-        // Here you could implement preset application logic
-        console.log('Selected preset:', preset);
+        console.log('[SettingsView] Selected preset:', preset.title, '(id:', preset.id, ')');
+        
+        // Persist the active preset to backend so Ask/Listen services can use it
+        try {
+            await window.api.settingsView.setActivePreset(preset.id);
+            console.log('[SettingsView] Active preset persisted successfully');
+        } catch (e) {
+            console.error('[SettingsView] Failed to persist active preset:', e);
+        }
     }
 
     handleMoveLeft() {
@@ -1248,6 +1272,25 @@ export class SettingsView extends LitElement {
                             `;
                         }
                         
+                        if (id === 'vibeproxy') {
+                            // VibeProxy auto-connects — no API key needed, just show status
+                            const isConnected = this.apiKeys[id] === 'local';
+                            return html`
+                                <div class="provider-key-group">
+                                    <label>${config.name} (Auto)</label>
+                                    ${isConnected ? html`
+                                        <div style="padding: 8px; background: rgba(0,255,0,0.1); border-radius: 4px; font-size: 11px; color: rgba(0,255,0,0.8);">
+                                            ✓ VibeProxy connected on localhost:8317
+                                        </div>
+                                    ` : html`
+                                        <div style="padding: 8px; background: rgba(255,200,0,0.1); border-radius: 4px; font-size: 11px; color: rgba(255,200,0,0.8);">
+                                            ⚠ VibeProxy not detected — start it on port 8317
+                                        </div>
+                                    `}
+                                </div>
+                            `;
+                        }
+
                         // Regular providers
                         return html`
                         <div class="provider-key-group">

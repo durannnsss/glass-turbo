@@ -4,6 +4,7 @@ const { createLLM } = require('../../common/ai/factory');
 const sessionRepository = require('../../common/repositories/session');
 const summaryRepository = require('./repositories');
 const modelStateService = require('../../common/services/modelStateService');
+const getSettingsService = () => require('../../settings/settingsService');
 
 class SummaryService {
     constructor() {
@@ -91,7 +92,18 @@ Please build upon this context while analyzing the new conversation segments.
         }
 
         const basePrompt = getSystemPrompt('pickle_glass_analysis', '', false);
-        const systemPrompt = basePrompt.replace('{{CONVERSATION_HISTORY}}', recentConversation);
+        let systemPrompt = basePrompt.replace('{{CONVERSATION_HISTORY}}', recentConversation);
+
+        // Load active preset and prepend as primary role instruction
+        try {
+            const activePreset = await getSettingsService().getActivePreset();
+            if (activePreset && activePreset.prompt) {
+                systemPrompt = `${activePreset.prompt.trim()}\n\n---\n\n${systemPrompt}`;
+                console.log(`[SummaryService] 📋 Using preset: "${activePreset.title}"`);
+            }
+        } catch (e) {
+            console.log('[SummaryService] Could not load active preset:', e.message);
+        }
 
         try {
             if (this.currentSessionId) {
@@ -102,7 +114,12 @@ Please build upon this context while analyzing the new conversation segments.
             if (!modelInfo || !modelInfo.apiKey) {
                 throw new Error('AI model or API key is not configured.');
             }
-            console.log(`🤖 Sending analysis request to ${modelInfo.provider} using model ${modelInfo.model}`);
+            
+            // Use Gemini 3.1 Flash Lite for analysis — it has the most generous
+            // free-tier limits (15 RPM, 500 RPD) so we can analyze frequently
+            // without burning the user's main LLM quota.
+            const analysisModel = 'gemini-3.1-flash-lite-preview';
+            console.log(`🤖 Sending analysis request using ${analysisModel} (analysis-dedicated model)`);
             
             const messages = [
                 {
@@ -139,7 +156,7 @@ Keep all points concise and build upon previous analysis if provided.`,
 
             const llm = createLLM(modelInfo.provider, {
                 apiKey: modelInfo.apiKey,
-                model: modelInfo.model,
+                model: analysisModel,
                 temperature: 0.7,
                 maxTokens: 1024,
                 usePortkey: modelInfo.provider === 'openai-glass',
@@ -160,7 +177,7 @@ Keep all points concise and build upon previous analysis if provided.`,
                         tldr: structuredData.summary.join('\n'),
                         bullet_json: JSON.stringify(structuredData.topic.bullets),
                         action_json: JSON.stringify(structuredData.actions),
-                        model: modelInfo.model
+                        model: analysisModel
                     });
                 } catch (err) {
                     console.error('[DB] Failed to save summary:', err);
@@ -300,10 +317,11 @@ Keep all points concise and build upon previous analysis if provided.`,
     }
 
     /**
-     * Triggers analysis when conversation history reaches 5 texts.
+     * Triggers analysis when conversation history reaches 3 texts.
+     * Uses Gemini 3.1 Flash Lite (500 RPD) so we can afford frequent triggers.
      */
     async triggerAnalysisIfNeeded() {
-        if (this.conversationHistory.length >= 5 && this.conversationHistory.length % 5 === 0) {
+        if (this.conversationHistory.length >= 3 && this.conversationHistory.length % 3 === 0) {
             console.log(`Triggering analysis - ${this.conversationHistory.length} conversation texts accumulated`);
 
             const data = await this.makeOutlineAndRequests(this.conversationHistory);

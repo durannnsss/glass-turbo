@@ -255,6 +255,57 @@ async function saveSettings(settings) {
     }
 }
 
+/**
+ * Set the active preset by ID. Persisted in electron-store.
+ * @param {string} presetId - The ID of the preset to activate
+ */
+async function setActivePreset(presetId) {
+    try {
+        const uid = authService.getCurrentUserId();
+        const userSettingsKey = uid ? `users.${uid}` : 'users.default';
+        const currentSaved = store.get(userSettingsKey, {});
+        store.set(userSettingsKey, { ...currentSaved, activePresetId: presetId });
+        console.log(`[SettingsService] Active preset set to: ${presetId}`);
+
+        // Notify relevant windows
+        windowNotificationManager.notifyRelevantWindows('active-preset-changed', { presetId });
+
+        return { success: true };
+    } catch (error) {
+        console.error('[SettingsService] Error setting active preset:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+/**
+ * Get the active preset's full data (id, title, prompt).
+ * Used by Ask and Listen services to inject preset context into LLM prompts.
+ * @returns {Object|null} The preset object { id, title, prompt } or null
+ */
+async function getActivePreset() {
+    try {
+        const uid = authService.getCurrentUserId();
+        const userSettingsKey = uid ? `users.${uid}` : 'users.default';
+        const saved = store.get(userSettingsKey, {});
+        const activePresetId = saved.activePresetId;
+
+        if (!activePresetId) return null;
+
+        // Look up the full preset from the DB
+        const presets = await settingsRepository.getPresets();
+        const preset = presets.find(p => p.id === activePresetId);
+        if (!preset) {
+            console.warn(`[SettingsService] Active preset ID "${activePresetId}" not found in DB`);
+            return null;
+        }
+
+        return { id: preset.id, title: preset.title, prompt: preset.prompt };
+    } catch (error) {
+        console.error('[SettingsService] Error getting active preset:', error);
+        return null;
+    }
+}
+
 async function getPresets() {
     try {
         // The adapter now handles which presets to return based on login state.
@@ -362,7 +413,7 @@ async function removeApiKey() {
         }
         
         // Remove all API keys for all providers
-        const providers = ['openai', 'anthropic', 'gemini', 'ollama', 'whisper'];
+        const providers = ['openai', 'anthropic', 'gemini', 'groq', 'vibeproxy', 'ollama', 'whisper'];
         for (const provider of providers) {
             await modelStateService.removeApiKey(provider);
         }
@@ -446,6 +497,8 @@ module.exports = {
     notifyPresetUpdate,
     getSettings,
     saveSettings,
+    setActivePreset,
+    getActivePreset,
     getPresets,
     getPresetTemplates,
     createPreset,

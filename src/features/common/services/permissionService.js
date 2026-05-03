@@ -19,7 +19,9 @@ class PermissionService {
         permissions.microphone = systemPreferences.getMediaAccessStatus('microphone');
         permissions.screen = systemPreferences.getMediaAccessStatus('screen');
         permissions.keychain = await this.checkKeychainCompleted(this._getAuthService().getCurrentUserId()) ? 'granted' : 'unknown';
-        permissions.needsSetup = permissions.microphone !== 'granted' || permissions.screen !== 'granted' || permissions.keychain !== 'granted';
+        // Screen recording is optional (only needed for Ask/screenshot feature).
+        // Microphone + keychain are required for core interview listening.
+        permissions.needsSetup = permissions.microphone !== 'granted' || permissions.keychain !== 'granted';
       } else {
         permissions.microphone = 'granted';
         permissions.screen = 'granted';

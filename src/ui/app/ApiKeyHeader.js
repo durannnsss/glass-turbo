@@ -436,8 +436,8 @@ export class ApiKeyHeader extends LitElement {
             const sttProviders = [];
 
             for (const id in config) {
-                // 'openai-glass' 같은 가상 Provider는 UI에 표시하지 않음
-                if (id.includes('-glass')) continue;
+                // Hide glass-virtual providers and auto-configured local providers from the API key UI
+                if (id.includes('-glass') || id === 'vibeproxy') continue;
                 const hasLlmModels = config[id].llmModels.length > 0 || id === 'ollama';
                 const hasSttModels = config[id].sttModels.length > 0 || id === 'whisper';
 
@@ -1522,6 +1522,23 @@ export class ApiKeyHeader extends LitElement {
                         modelId: this.selectedLlmModel,
                     });
                 }
+            } else if (this.llmProvider === 'vibeproxy') {
+                // VibeProxy is auto-configured — just validate connectivity
+                llmResult = await window.api.apiKeyHeader.validateKey({
+                    provider: 'vibeproxy',
+                    key: 'local',
+                });
+
+                if (llmResult.success) {
+                    const config = await window.api.apiKeyHeader.getProviderConfig();
+                    const providerConfig = config['vibeproxy'];
+                    if (providerConfig && providerConfig.llmModels.length > 0) {
+                        await window.api.apiKeyHeader.setSelectedModel({
+                            type: 'llm',
+                            modelId: providerConfig.llmModels[0].id,
+                        });
+                    }
+                }
             } else {
                 // For other providers, validate API key
                 if (!this.llmApiKey.trim()) {
@@ -1919,8 +1936,8 @@ export class ApiKeyHeader extends LitElement {
     }
 
     render() {
-        const llmNeedsApiKey = this.llmProvider !== 'ollama' && this.llmProvider !== 'whisper';
-        const sttNeedsApiKey = this.sttProvider !== 'ollama' && this.sttProvider !== 'whisper';
+        const llmNeedsApiKey = this.llmProvider !== 'ollama' && this.llmProvider !== 'whisper' && this.llmProvider !== 'vibeproxy';
+        const sttNeedsApiKey = this.sttProvider !== 'ollama' && this.sttProvider !== 'whisper' && this.sttProvider !== 'vibeproxy';
         const llmNeedsModel = this.llmProvider === 'ollama';
         const sttNeedsModel = this.sttProvider === 'whisper';
 
@@ -1968,7 +1985,13 @@ export class ApiKeyHeader extends LitElement {
                         <div class="label">2. Enter API Key</div>
                         ${this.llmProvider === 'ollama'
                             ? this._renderOllamaStateUI()
-                            : html`
+                            : this.llmProvider === 'vibeproxy'
+                              ? html`
+                                    <div class="api-input" style="background: rgba(0,180,0,0.1); border-color: rgba(0,200,0,0.3); color: #6dff6d; font-size: 11px; display: flex; align-items: center; gap: 6px;">
+                                        <span style="font-size: 14px;">✓</span> VibeProxy auto-connected
+                                    </div>
+                                `
+                              : html`
                                   <div class="input-wrapper">
                                       <input
                                           type="password"

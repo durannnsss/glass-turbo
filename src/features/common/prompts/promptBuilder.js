@@ -7,7 +7,12 @@ function buildSystemPrompt(promptParts, customPrompt = '', googleSearchEnabled =
         sections.push('\n\n', promptParts.searchUsage);
     }
 
-    sections.push('\n\n', promptParts.content, '\n\nUser-provided context\n-----\n', customPrompt, '\n-----\n\n', promptParts.outputInstructions);
+    // Replace {{CONVERSATION_HISTORY}} placeholder if present in outputInstructions
+    // (used by pickle_glass_analysis profile)
+    const outputInstructions = (promptParts.outputInstructions || '')
+        .replace('{{CONVERSATION_HISTORY}}', customPrompt || 'No conversation history yet.');
+
+    sections.push('\n\n', promptParts.content, '\n\nUser-provided context\n-----\n', customPrompt, '\n-----\n\n', outputInstructions);
 
     return sections.join('');
 }

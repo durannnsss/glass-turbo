@@ -19,6 +19,7 @@ class ModelStateService extends EventEmitter {
         await this._initializeEncryption();
         await this._runMigrations();
         this.setupLocalAIStateSync();
+        await this._detectVibeProxy();
         await this._autoSelectAvailableModels([], true);
         console.log('[ModelStateService] One-time setup complete.');
     }
@@ -149,11 +150,24 @@ class ModelStateService extends EventEmitter {
                 console.log(`[ModelStateService] No valid ${type.toUpperCase()} model selected or selection forced. Finding an alternative...`);
                 const availableModels = await this.getAvailableModels(type);
                 if (availableModels.length > 0) {
-                    const apiModel = availableModels.find(model => {
-                        const provider = this.getProviderForModel(model.id, type);
-                        return provider && provider !== 'ollama' && provider !== 'whisper';
-                    });
-                    const newModel = apiModel || availableModels[0];
+                    let newModel;
+                    if (type === 'stt') {
+                        // Prefer Groq Whisper Turbo for STT — silence-based chunking + free
+                        const groqModel = availableModels.find(m => this.getProviderForModel(m.id, type) === 'groq');
+                        const apiModel = availableModels.find(m => {
+                            const p = this.getProviderForModel(m.id, type);
+                            return p && p !== 'ollama' && p !== 'whisper';
+                        });
+                        newModel = groqModel || apiModel || availableModels[0];
+                    } else {
+                        // For LLM: prefer gemini free tier, then any non-local model
+                        const geminiModel = availableModels.find(m => this.getProviderForModel(m.id, type) === 'gemini');
+                        const apiModel = availableModels.find(m => {
+                            const p = this.getProviderForModel(m.id, type);
+                            return p && p !== 'ollama' && p !== 'whisper';
+                        });
+                        newModel = geminiModel || apiModel || availableModels[0];
+                    }
                     await this.setSelectedModel(type, newModel.id);
                     console.log(`[ModelStateService] Auto-selected ${type.toUpperCase()} model: ${newModel.id}`);
                 } else {
@@ -210,8 +224,8 @@ class ModelStateService extends EventEmitter {
             throw new Error('Provider is required');
         }
 
-        // 'openai-glass'는 자체 인증 키를 사용하므로 유효성 검사를 건너뜁니다.
-        if (provider !== 'openai-glass') {
+        // 'openai-glass' and 'vibeproxy' use their own auth — skip validation
+        if (provider !== 'openai-glass' && provider !== 'vibeproxy') {
             const validationResult = await this.validateApiKey(provider, key);
             if (!validationResult.success) {
                 console.warn(`[ModelStateService] API key validation failed for ${provider}: ${validationResult.error}`);
@@ -219,7 +233,7 @@ class ModelStateService extends EventEmitter {
             }
         }
 
-        const finalKey = (provider === 'ollama' || provider === 'whisper') ? 'local' : key;
+        const finalKey = (provider === 'ollama' || provider === 'whisper' || provider === 'vibeproxy') ? 'local' : key;
         const existingSettings = await providerSettingsRepository.getByProvider(provider) || {};
         await providerSettingsRepository.upsert(provider, { ...existingSettings, api_key: finalKey });
         
@@ -369,7 +383,7 @@ class ModelStateService extends EventEmitter {
     // --- 핸들러 및 유틸리티 메서드 ---
 
     async validateApiKey(provider, key) {
-        if (!key || (key.trim() === '' && provider !== 'ollama' && provider !== 'whisper')) {
+        if (!key || (key.trim() === '' && provider !== 'ollama' && provider !== 'whisper' && provider !== 'vibeproxy')) {
             return { success: false, error: 'API key cannot be empty.' };
         }
         const ProviderClass = getProviderClass(provider);
@@ -430,6 +444,42 @@ class ModelStateService extends EventEmitter {
             return PROVIDERS[provider]?.sttModels?.length > 0 || provider === 'whisper';
         });
         return hasLlmKey && hasSttKey;
+    }
+
+    /**
+     * Auto-detect VibeProxy on localhost:8317.
+     * If running, register it automatically so VP models appear without user config.
+     */
+    async _detectVibeProxy() {
+        try {
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 3000);
+
+            const response = await fetch('http://localhost:8317/v1/models', {
+                signal: controller.signal,
+            });
+            clearTimeout(timeout);
+
+            if (response.ok) {
+                const data = await response.json();
+                const modelCount = data?.data?.length || 0;
+                console.log(`[ModelStateService] ✅ VibeProxy detected! ${modelCount} models available.`);
+
+                // Auto-register vibeproxy with 'local' key
+                const existing = await providerSettingsRepository.getByProvider('vibeproxy');
+                if (!existing?.api_key) {
+                    await providerSettingsRepository.upsert('vibeproxy', {
+                        api_key: 'local',
+                    });
+                    console.log('[ModelStateService] VibeProxy auto-registered.');
+                }
+            } else {
+                console.log('[ModelStateService] VibeProxy responded but not OK:', response.status);
+            }
+        } catch (error) {
+            // VibeProxy not running — that's fine, silently skip
+            console.log('[ModelStateService] VibeProxy not detected on localhost:8317 (not running or not installed).');
+        }
     }
 }
 

@@ -43,7 +43,10 @@ const PROVIDERS = {
       name: 'Gemini',
       handler: () => require("./providers/gemini"),
       llmModels: [
-          { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash' },
+          { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash (5 RPM, 20 RPD)' },
+          { id: 'gemini-3.1-flash-lite-preview', name: 'Gemini 3.1 Flash Lite (15 RPM, 500 RPD)' },
+          { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash (5 RPM, 20 RPD)' },
+          { id: 'gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash-Lite (10 RPM, 20 RPD)' },
       ],
       sttModels: [
           { id: 'gemini-live-2.5-flash-preview', name: 'Gemini Live 2.5 Flash' }
@@ -70,6 +73,31 @@ const PROVIDERS = {
       handler: () => require("./providers/ollama"),
       llmModels: [], // Dynamic models populated from installed Ollama models
       sttModels: [], // Ollama doesn't support STT yet
+  },
+  'groq': {
+      name: 'Groq',
+      handler: () => require("./providers/groq"),
+      llmModels: [],
+      sttModels: [
+          { id: 'whisper-large-v3-turbo', name: 'Whisper v3 Turbo (Groq)' }
+      ],
+  },
+  'vibeproxy': {
+      name: 'VibeProxy',
+      handler: () => require("./providers/vibeproxy"),
+      llmModels: [
+          { id: 'claude-opus-4-6-thinking', name: 'VP: Claude Opus 4 (Thinking)' },
+          { id: 'claude-sonnet-4-6', name: 'VP: Claude Sonnet 4' },
+          { id: 'gemini-3-pro-high', name: 'VP: Gemini 3 Pro (High)' },
+          { id: 'gemini-3.1-pro-high', name: 'VP: Gemini 3.1 Pro (High)' },
+          { id: 'gemini-3-pro-low', name: 'VP: Gemini 3 Pro (Low)' },
+          { id: 'gemini-3.1-pro-low', name: 'VP: Gemini 3.1 Pro (Low)' },
+          { id: 'gemini-3-flash', name: 'VP: Gemini 3 Flash' },
+          { id: 'gemini-3.1-flash-lite', name: 'VP: Gemini 3.1 Flash Lite' },
+          { id: 'gemini-3.1-flash-image', name: 'VP: Gemini 3.1 Flash (Image)' },
+          { id: 'gpt-oss-120b-medium', name: 'VP: GPT-OSS 120B' },
+      ],
+      sttModels: [],
   },
   'whisper': {
       name: 'Whisper (Local)',
@@ -158,6 +186,8 @@ function getProviderClass(providerId) {
         'gemini': 'GeminiProvider',
         'deepgram': 'DeepgramProvider',
         'ollama': 'OllamaProvider',
+        'groq': 'GroqProvider',
+        'vibeproxy': 'VibeProxyProvider',
         'whisper': 'WhisperProvider'
     };
     

@@ -3,6 +3,9 @@ const { createStreamingLLM } = require('../common/ai/factory');
 // Lazy require helper to avoid circular dependency issues
 const getWindowManager = () => require('../../window/windowManager');
 const internalBridge = require('../../bridge/internalBridge');
+// Lazy require to avoid circular dependency (listenService → askService)
+const getListenService = () => require('../listen/listenService');
+const getSettingsService = () => require('../settings/settingsService');
 
 const getWindowPool = () => {
     try {
@@ -252,9 +255,42 @@ class AskService {
             const screenshotResult = await captureScreenshot({ quality: 'medium' });
             const screenshotBase64 = screenshotResult.success ? screenshotResult.base64 : null;
 
-            const conversationHistory = this._formatConversationForPrompt(conversationHistoryRaw);
+            // Auto-inject live transcript from Listen feature if no explicit history passed
+            let effectiveHistory = conversationHistoryRaw;
+            if (!effectiveHistory || effectiveHistory.length === 0) {
+                try {
+                    const listenSvc = getListenService();
+                    const liveHistory = listenSvc.getConversationHistory();
+                    if (liveHistory && liveHistory.length > 0) {
+                        effectiveHistory = liveHistory;
+                        console.log(`[AskService] 🎤 Auto-injected ${liveHistory.length} transcript turns from Listen`);
+                    }
+                } catch (e) {
+                    console.log('[AskService] Could not fetch Listen transcript:', e.message);
+                }
+            }
 
-            const systemPrompt = getSystemPrompt('pickle_glass_analysis', conversationHistory, false);
+            const conversationHistory = this._formatConversationForPrompt(effectiveHistory);
+
+            // Load the user's active preset to use as primary system instruction
+            let presetSystemPrompt = '';
+            try {
+                const activePreset = await getSettingsService().getActivePreset();
+                if (activePreset && activePreset.prompt) {
+                    presetSystemPrompt = activePreset.prompt.trim();
+                    console.log(`[AskService] 📋 Injecting active preset: "${activePreset.title}"`);
+                }
+            } catch (e) {
+                console.log('[AskService] Could not load active preset:', e.message);
+            }
+
+            const baseSystemPrompt = getSystemPrompt('pickle_glass_analysis', conversationHistory, false);
+
+            // If a preset is active, prepend it as the primary role/instruction
+            // This makes the AI adopt the preset's persona (e.g., interview copilot, sales assistant)
+            const systemPrompt = presetSystemPrompt
+                ? `${presetSystemPrompt}\n\n---\n\n${baseSystemPrompt}`
+                : baseSystemPrompt;
 
             const messages = [
                 { role: 'system', content: systemPrompt },

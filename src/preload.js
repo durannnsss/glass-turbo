@@ -228,6 +228,8 @@ contextBridge.exposeInMainWorld('api', {
     
     // Settings Management
     getPresets: () => ipcRenderer.invoke('settings:getPresets'),
+    setActivePreset: (presetId) => ipcRenderer.invoke('settings:setActivePreset', presetId),
+    getActivePreset: () => ipcRenderer.invoke('settings:getActivePreset'),
     getAutoUpdate: () => ipcRenderer.invoke('settings:get-auto-update'),
     setAutoUpdate: (isEnabled) => ipcRenderer.invoke('settings:set-auto-update', isEnabled),
     getContentProtectionStatus: () => ipcRenderer.invoke('get-content-protection-status'),

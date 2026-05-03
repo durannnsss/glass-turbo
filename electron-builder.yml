@@ -1,10 +1,10 @@
 # electron-builder.yml
 
 # The unique application ID
-appId: com.pickle.glass
+appId: com.pickle.glass-turbo
 
 # The user-facing application name
-productName: Glass
+productName: Glass Turbo
 
 # Publish configuration for GitHub releases
 publish:
@@ -60,7 +60,7 @@ nsis:
     deleteAppDataOnUninstall: true
     createDesktopShortcut: always
     createStartMenuShortcut: true
-    shortcutName: Glass
+    shortcutName: Glass Turbo
 
 # macOS specific configuration
 mac:

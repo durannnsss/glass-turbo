@@ -166,8 +166,8 @@ class SttService {
             }
             // console.log('[SttService] handleMyMessage', message);
             
-            if (this.modelInfo.provider === 'whisper') {
-                // Whisper STT emits 'transcription' events with different structure
+            if (this.modelInfo.provider === 'whisper' || this.modelInfo.provider === 'groq') {
+                // Whisper and Groq STT emit 'transcription' events with { text: '...' } structure
                 if (message.text && message.text.trim()) {
                     const finalText = message.text.trim();
                     
@@ -307,8 +307,8 @@ class SttService {
                 return;
             }
             
-            if (this.modelInfo.provider === 'whisper') {
-                // Whisper STT emits 'transcription' events with different structure
+            if (this.modelInfo.provider === 'whisper' || this.modelInfo.provider === 'groq') {
+                // Whisper and Groq STT emit 'transcription' events with { text: '...' } structure
                 if (message.text && message.text.trim()) {
                     const finalText = message.text.trim();
                     
